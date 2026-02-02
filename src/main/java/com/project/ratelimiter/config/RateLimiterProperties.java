@@ -22,6 +22,7 @@ public class RateLimiterProperties {
     public static class Default {
         private int requestsPerMinute = 10;
         private int windowSeconds = 60;
+        private int burstCapacity = 20;
     }
 
     @Data
