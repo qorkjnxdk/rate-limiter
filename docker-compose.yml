@@ -1,0 +1,118 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # POSTGRESQL DATABASE
+  # ==========================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: rate-limiter-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ratelimiter
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - rate-limiter-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ratelimiter"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ==========================================
+  # REDIS CACHE
+  # ==========================================
+  redis:
+    image: redis:7-alpine
+    container_name: rate-limiter-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - rate-limiter-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+
+  # ==========================================
+  # SPRING BOOT APPLICATION
+  # ==========================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rate-limiter-app
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      JAVA_OPTS: >
+        -Xmx512m
+        -Xms256m
+        -XX:+UseContainerSupport
+        -XX:MaxRAMPercentage=75.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - rate-limiter-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ==========================================
+  # REDIS COMMANDER (Optional - GUI for Redis)
+  # ==========================================
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: rate-limiter-redis-ui
+    restart: unless-stopped
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    ports:
+      - "8081:8081"
+    networks:
+      - rate-limiter-network
+    depends_on:
+      - redis
+
+# ==========================================
+# VOLUMES
+# ==========================================
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+
+# ==========================================
+# NETWORKS
+# ==========================================
+networks:
+  rate-limiter-network:
+    driver: bridge

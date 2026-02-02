@@ -1,0 +1,87 @@
+# ==========================================
+# MAVEN
+# ==========================================
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# ==========================================
+# IDE - INTELLIJ IDEA
+# ==========================================
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+.idea_modules/
+
+# ==========================================
+# IDE - ECLIPSE
+# ==========================================
+.classpath
+.project
+.settings/
+bin/
+.metadata/
+
+# ==========================================
+# IDE - VS CODE
+# ==========================================
+.vscode/
+*.code-workspace
+
+# ==========================================
+# OS
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ==========================================
+# LOGS
+# ==========================================
+*.log
+logs/
+
+# ==========================================
+# APPLICATION SPECIFIC
+# ==========================================
+application-local.yml
+application-*.yml.bak
+
+# ==========================================
+# DOCKER
+# ==========================================
+docker-compose.override.yml
+
+# ==========================================
+# TEST RESULTS
+# ==========================================
+load-tests/results/
+*.jtl
+*.jmx.bak
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/

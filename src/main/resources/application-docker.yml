@@ -1,0 +1,24 @@
+# ==========================================
+# DOCKER ENVIRONMENT OVERRIDES
+# ==========================================
+
+spring:
+  # Docker uses service names as hostnames
+  datasource:
+    url: jdbc:postgresql://postgres:5432/ratelimiter
+
+  data:
+    redis:
+      host: redis
+      port: 6379
+
+redisson:
+  config: |
+    singleServerConfig:
+      address: "redis://redis:6379"
+
+# Disable SQL logging in containerized environment
+logging:
+  level:
+    org.hibernate.SQL: INFO
+    org.hibernate.type.descriptor.sql.BasicBinder: INFO

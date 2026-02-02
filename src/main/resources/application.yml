@@ -1,0 +1,138 @@
+# ==========================================
+# SPRING BOOT APPLICATION CONFIGURATION
+# ==========================================
+
+spring:
+  application:
+    name: rate-limiter-service
+
+  # ========== DATABASE CONFIGURATION ==========
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ratelimiter
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 20000
+      idle-timeout: 300000
+      max-lifetime: 1200000
+
+  # ========== JPA/HIBERNATE CONFIGURATION ==========
+  jpa:
+    hibernate:
+      ddl-auto: update  # Creates/updates tables automatically
+    show-sql: true      # Log SQL statements (disable in production)
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        use_sql_comments: true
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+
+  # ========== REDIS CONFIGURATION ==========
+  data:
+    redis:
+      host: localhost
+      port: 6379
+#      password:  # Leave empty for local development
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 2
+          max-wait: -1ms
+        shutdown-timeout: 100ms
+
+# ========== REDISSON CONFIGURATION ==========
+redisson:
+  config: |
+    singleServerConfig:
+      address: "redis://localhost:6379"
+      database: 0
+      connectionPoolSize: 10
+      connectionMinimumIdleSize: 5
+      password: null
+
+# ========== SERVER CONFIGURATION ==========
+server:
+  port: 8080
+  error:
+    include-message: always
+    include-binding-errors: always
+    include-stacktrace: on_param
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain
+
+# ========== ACTUATOR CONFIGURATION ==========
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,env
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: ${spring.application.name}
+
+# ========== SWAGGER/OPENAPI CONFIGURATION ==========
+springdoc:
+  api-docs:
+    path: /api-docs
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    operations-sorter: method
+    tags-sorter: alpha
+    doc-expansion: none
+    display-request-duration: true
+  show-actuator: true
+
+# ========== CUSTOM APPLICATION PROPERTIES ==========
+rate-limiter:
+  # Default rate limiting configuration
+  default:
+    requests-per-minute: 10
+    window-seconds: 60
+
+  # Algorithm selection: TOKEN_BUCKET or SLIDING_WINDOW
+  algorithm: TOKEN_BUCKET
+
+  # Tier configurations
+  tiers:
+    free:
+      requests-per-minute: 10
+      burst-capacity: 15
+    premium:
+      requests-per-minute: 100
+      burst-capacity: 150
+    enterprise:
+      requests-per-minute: 1000
+      burst-capacity: 1500
+
+# ========== LOGGING CONFIGURATION ==========
+logging:
+  level:
+    root: INFO
+    com.ryanproject.ratelimiter: DEBUG
+    org.springframework.web: DEBUG
+    org.springframework.data: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
