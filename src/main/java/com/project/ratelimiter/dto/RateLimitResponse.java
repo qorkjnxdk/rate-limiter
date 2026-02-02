@@ -14,15 +14,10 @@ import java.time.Instant;
 public class RateLimitResponse {
 
     private boolean allowed;
-
     private long remainingTokens;
-
     private Instant resetTime;
-
     private String tier;
-
     private String message;
-
     private RateLimitMetadata metadata;
 
     @Data

@@ -28,9 +28,7 @@ public class RateLimitConfigDTO {
     private Integer requestsPerMinute;
 
     private Integer burstCapacity;
-
     private String algorithm;
-
     private Boolean enabled;
 
 }

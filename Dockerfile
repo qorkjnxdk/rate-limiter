@@ -40,21 +40,3 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
 
 # Run application
 ENTRYPOINT ["java", "-jar", "app.jar"]
-```
-
-### File 3: Docker Ignore
-
-**Create: `.dockerignore`**
-```
-# Ignore unnecessary files during Docker build
-target/
-.mvn/
-.git/
-.gitignore
-.idea/
-*.iml
-*.log
-.DS_Store
-README.md
-docs/
-load-tests/

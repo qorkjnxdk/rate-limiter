@@ -15,7 +15,6 @@ public class RateLimitRequest {
     private String resource;
 
     private String userId;  // Optional - can be derived from API key
-
     private String metadata;  // Optional - additional context
 
 }
