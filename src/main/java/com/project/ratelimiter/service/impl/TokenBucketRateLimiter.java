@@ -2,15 +2,27 @@ package com.project.ratelimiter.service.impl;
 
 import com.project.ratelimiter.config.RateLimiterProperties;
 import com.project.ratelimiter.dto.RateLimitResponse;
+import com.project.ratelimiter.metrics.RateLimitMetrics;
+
 import com.project.ratelimiter.model.RateLimitConfig;
 import com.project.ratelimiter.repository.RateLimitConfigRepository;
 import com.project.ratelimiter.service.RateLimiterService;
+
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+
+import org.springframework.scripting.support.ResourceScriptSource;
 import org.springframework.stereotype.Service;
 
+import jakarta.annotation.PostConstruct;
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -24,13 +36,33 @@ public class TokenBucketRateLimiter implements RateLimiterService{
     private final RedisTemplate<String, Object> redisTemplate;
     private final RateLimiterProperties properties;
     private final RateLimitConfigRepository configRepository;
+    private final RateLimitMetrics metrics;
+
+    private DefaultRedisScript<List> rateLimitScript;
 
     public TokenBucketRateLimiter(RedisTemplate<String, Object> redisTemplate,
                                   RateLimiterProperties properties,
-                                  RateLimitConfigRepository configRepository) {
+                                  RateLimitConfigRepository configRepository,
+                                  RateLimitMetrics metrics) {
         this.redisTemplate = redisTemplate;
         this.properties = properties;
         this.configRepository = configRepository;
+        this.metrics = metrics;
+    }
+
+    //@PostConstruct runs after dependency injection: This is to load Lua script on startup
+    @PostConstruct
+    public void init() {
+        try {
+            rateLimitScript = new DefaultRedisScript<>();
+            rateLimitScript.setScriptSource(
+                    new ResourceScriptSource(new ClassPathResource("redis/token-bucket-check.lua"))
+            );
+            rateLimitScript.setResultType(List.class);
+            logger.info("Loaded Lua script for atomic rate limiting");
+        } catch (Exception e) {
+            logger.error("Failed to load Lua script, will use fallback logic", e);
+        }
     }
 
     private static class TokenBucketState {
@@ -44,7 +76,98 @@ public class TokenBucketRateLimiter implements RateLimiterService{
     }
 
     @Override
-    public RateLimitResponse allowRequest(String userId, String resource){
+    public RateLimitResponse allowRequest(String userId, String resource) {
+
+        Timer.Sample sample = metrics.startTimer();
+        try{
+            RateLimitConfig config = getConfigForUser(userId, resource);
+
+            // Try Lua script first (atomic, distributed-safe)
+            try {
+                RateLimitResponse response = allowRequestWithLua(userId, resource, config);
+
+                metrics.recordLuaSuccess();
+                if (response.isAllowed()) {
+                    metrics.recordAllowed();
+                } else {
+                    metrics.recordDenied();
+                }
+
+                return response;
+            } catch (Exception e) {
+                logger.warn("Lua script failed, falling back to Java logic: {}", e.getMessage());
+                metrics.recordLuaFailure();
+
+                RateLimitResponse response = allowRequestDefault(userId, resource);
+
+                if (response.isAllowed()) {
+                    metrics.recordAllowed();
+                } else {
+                    metrics.recordDenied();
+                }
+
+                return response;
+            }
+        } finally {
+            metrics.stopTimer(sample);
+        }
+
+    }
+
+    private RateLimitResponse allowRequestWithLua(String userId, String resource, RateLimitConfig config) {
+        String keyTokens = generateKey(userId, resource) + ":tokens";
+        String keyTime = generateKey(userId, resource) + ":time";
+
+        long now = System.currentTimeMillis();
+
+        // Get capacity (burstCapacity if set, otherwise requestsPerMinute)
+        long capacity = config.getBurstCapacity() != null ?
+                config.getBurstCapacity() :
+                config.getRequestsPerMinute();
+
+        // Execute Lua script
+        // INTERVIEW TIP: RedisTemplate.execute() sends script to Redis
+        // KEYS = [keyTokens, keyTime]
+        // ARGV = [capacity, requestsPerMinute, now]
+        List<Long> result = redisTemplate.execute(
+                rateLimitScript,
+                Arrays.asList(keyTokens, keyTime),  // KEYS
+                capacity,                            // ARGV[1]
+                config.getRequestsPerMinute(),      // ARGV[2]
+                now                                  // ARGV[3]
+        );
+
+        if (result == null || result.size() < 3) {
+            throw new RuntimeException("Lua script returned invalid result");
+        }
+
+        // Parse results
+        // result[0] = allowed (1 or 0)
+        // result[1] = remaining tokens
+        // result[2] = reset time
+        boolean allowed = result.get(0) == 1;
+        long remainingTokens = result.get(1);
+        long resetTime = result.get(2);
+
+        logger.debug("Lua script result: allowed={}, remaining={}, resetTime={}",
+                allowed, remainingTokens, resetTime);
+
+        return RateLimitResponse.builder()
+                .allowed(allowed)
+                .remainingTokens(remainingTokens)
+                .resetTime(Instant.ofEpochMilli(resetTime))
+                .tier(config.getTier())
+                .message(allowed ?
+                        String.format("Request allowed (%s tier) [Distributed-safe]", config.getTier()) :
+                        String.format("Rate limit exceeded. Limit: %d req/min (%s tier) [Distributed-safe]",
+                                config.getRequestsPerMinute(), config.getTier()))
+                .metadata(RateLimitResponse.RateLimitMetadata.builder()
+                        .algorithm("TOKEN_BUCKET_ATOMIC")
+                        .build())
+                .build();
+    }
+
+    public RateLimitResponse allowRequestDefault(String userId, String resource){
 
         //Fetching config for each user
         RateLimitConfig config = getConfigForUser(userId, resource);
